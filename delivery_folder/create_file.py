@@ -1,5 +1,6 @@
 import os
 import sys
+from urllib.parse import quote_plus
 
 def get_keywords():
     # コマンドライン引数があれば利用
@@ -30,6 +31,14 @@ def sanitize(name):
     return name
 
 
+def generate_search_urls(keyword):
+    """キーワードをもとにGoogle検索とYahoo検索のURLを生成"""
+    encoded_keyword = quote_plus(keyword)
+    google_url = f"https://www.google.com/search?q={encoded_keyword}"
+    yahoo_url = f"https://search.yahoo.co.jp/search?p={encoded_keyword}"
+    return google_url, yahoo_url
+
+
 def create_files(keywords, target_dir):
     os.makedirs(target_dir, exist_ok=True)
     created = []
@@ -37,8 +46,14 @@ def create_files(keywords, target_dir):
         safe_name = sanitize(kw)
         filename = f"{safe_name}.txt"
         filepath = os.path.join(target_dir, filename)
+        
+        # Google検索とYahoo検索のURLを生成
+        google_url, yahoo_url = generate_search_urls(kw)
+        
         with open(filepath, 'w', encoding='utf-8') as f:
-            pass
+            f.write(f"{google_url}\n")
+            f.write(f"{yahoo_url}\n")
+        
         created.append(filepath)
     return created
 
