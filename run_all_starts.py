@@ -37,31 +37,33 @@ except Exception as e:
     print(f"エラー: delivery_folder の読み取り中に問題が発生しました: {e}")
     exit()
 
-# txtファイルの数をチェックし、10個より多い場合は最初の10個のみを使用する
-if len(txt_files_all) > 10:
-    print(f"警告: delivery_folder 内に {len(txt_files_all)} 個のテキストファイルが見つかりました。最初の10個のファイルのみをキーワードとして使用します。")
-    txt_files = txt_files_all[:10] # 先頭から10個を取得
-elif len(txt_files_all) < len(start_scripts): # start_scriptsの数と比較
-    # txtファイルがstart_scriptsの数より少ない場合
-    print(f"エラー: delivery_folder 内のテキストファイルが {len(txt_files_all)} 個しか見つかりませんでした。")
-    print(f"{len(start_scripts)} 個の start.py を実行するには、{len(start_scripts)} 個のテキストファイルが必要です。処理を中断します。")
+# txtファイルの数をチェックし、利用可能なファイル数に応じて動作を調整する
+if len(txt_files_all) == 0:
+    print(f"エラー: delivery_folder 内にテキストファイルが見つかりませんでした。")
+    print("少なくとも1個のテキストファイルが必要です。処理を中断します。")
     exit()
+elif len(txt_files_all) > len(start_scripts):
+    print(f"情報: delivery_folder 内に {len(txt_files_all)} 個のテキストファイルが見つかりました。")
+    print(f"最初の {len(start_scripts)} 個のファイルのみをキーワードとして使用します。")
+    txt_files = txt_files_all[:len(start_scripts)] # start_scriptsの数だけ取得
 else:
-    # txtファイルがちょうどlen(start_scripts)個の場合 (またはそれ以上でスライスされた結果)
-    txt_files = txt_files_all[:len(start_scripts)] # 念のためlen(start_scripts)でスライス
+    # txtファイルがstart_scriptsの数以下の場合
+    print(f"情報: delivery_folder 内に {len(txt_files_all)} 個のテキストファイルが見つかりました。")
+    print(f"利用可能な {len(txt_files_all)} 個のstart.pyを実行します。")
+    txt_files = txt_files_all # 全てのtxtファイルを使用
 
 # キーワードリストを作成 (ファイル名から拡張子を除いたもの)
 keywords = [os.path.splitext(f)[0] for f in txt_files]
 
-# start_scriptsの数とキーワードの数が一致しない場合のエラー処理
-# 上のロジックでtxt_filesの数はlen(start_scripts)に調整されるため、このチェックは基本的に冗長になるが、
-# 万が一の不整合を防ぐために残しておくのも良い。
-# ただし、現状のロジックでは、この条件に合致するのは難しい。
-if len(keywords) != len(start_scripts):
-    print(f"エラー: WebText_extraction ディレクトリ内の start.py の数 ({len(start_scripts)}) と")
-    print(f"delivery_folder 内の .txt ファイルの数 ({len(keywords)}) が一致しません。")
-    print("それぞれの数が一致するように調整してください。処理を中断します。")
-    exit()
+# start_scriptsをキーワードの数に合わせて調整
+if len(keywords) < len(start_scripts):
+    # キーワードの数がstart_scriptsの数より少ない場合、start_scriptsを切り詰める
+    start_scripts = start_scripts[:len(keywords)]
+    print(f"start_scriptsを {len(keywords)} 個に調整しました。")
+elif len(keywords) > len(start_scripts):
+    # この場合は上のロジックで既にtxt_filesが調整されているはずなので、基本的には発生しない
+    print(f"警告: 予期しない状況です。キーワード数({len(keywords)})がstart_scripts数({len(start_scripts)})より多くなっています。")
+    keywords = keywords[:len(start_scripts)]
 
 processes = []
 commands_to_run = [] # 起動するコマンドと引数、作業ディレクトリを保存するリスト

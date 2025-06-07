@@ -20,8 +20,8 @@ def combine_files():
     # 出力ディレクトリが存在しない場合は作成
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
     
-    # 結合した内容を出力ファイルに書き込み
-    with open(output_file, 'w', encoding='utf-8') as f:
+    # BOM付きUTF-8で結合した内容を出力ファイルに書き込み
+    with open(output_file, 'w', encoding='utf-8-sig') as f:
         f.write(combined_content)
     
     print("ファイルの統合が完了しました！")
