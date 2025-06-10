@@ -860,9 +860,9 @@ class WebTextExtractor:
         """
         ドメインに応じてメインコンテンツを抽出する (失敗時は空文字列を返す)
         """
-        # 一般的なメインコンテンツのセレクタ
+        # 一般的なメインコンテンツのセレクタ（優先順位順）
         main_content_selectors = [
-            'article', 'main', '.article', '.post', '.entry', '.content', '#content',
+            'main', 'article', '.article', '.post', '.entry', '.content', '#content',
             '.main-content', '.post-content', '.article-content', '.entry-content',
             'section.article', 'div.article', '[itemprop="articleBody"]', '.story-body',
         ]
@@ -876,6 +876,7 @@ class WebTextExtractor:
             'gendai.media': ['.article-body'],
             'www.oricon.co.jp': ['.full-text'],
             'www.chunichi.co.jp': ['.article-body'],
+            'www.sanspo.com': ['.article-header, .article-body', '.article-body', '.article__text', 'article', 'main'],
             # 必要に応じて他のドメインを追加
         }
         
@@ -894,8 +895,16 @@ class WebTextExtractor:
                 best_element = max(elements, key=lambda x: len(x.get_text(strip=True)), default=None)
                 if best_element:
                     # 不要な要素を削除
-                    for tag in best_element.select('header, footer, nav, aside, script, style, .related, .recommend, .sidebar, .ad, .banner, noscript'): # 不要要素を追加
-                        tag.decompose()
+                    unwanted_selectors = [
+                        'header', 'footer', 'nav', 'aside', 'script', 'style', 'noscript',
+                        '.related', '.recommend', '.sidebar', '.ad', '.banner', 
+                        '.ranking', '.sports', '.entame', '.latest', '.news', '.links', 
+                        '.more', '.topics', '.column', '.comment', '.social', '.share',
+                        '.breadcrumb', '.pagination', '.tag', '.category'
+                    ]
+                    for selector in unwanted_selectors:
+                        for tag in best_element.select(selector):
+                            tag.decompose()
                     main_text = best_element.get_text(separator='\n', strip=True)
                     if main_text: # 空でなければ返す
                         return main_text
@@ -909,8 +918,12 @@ class WebTextExtractor:
 
         for block in blocks:
             # ヘッダー、フッター、広告などを除外
-            if any(cls in str(block.get('class', [])).lower() for cls in ['header', 'footer', 'nav', 'sidebar', 'ad', 'banner', 'menu', 'related', 'recommend'])\
-               or block.name in ['header', 'footer', 'nav', 'aside', 'script', 'style', 'noscript']:\
+            exclude_classes = ['header', 'footer', 'nav', 'sidebar', 'ad', 'banner', 'menu', 'related', 'recommend', 'ranking', 'sports', 'entame', 'latest', 'news', 'links', 'more', 'topics', 'column']
+            exclude_tags = ['header', 'footer', 'nav', 'aside', 'script', 'style', 'noscript']
+            
+            if any(cls in str(block.get('class', [])).lower() for cls in exclude_classes)\
+               or block.name in exclude_tags\
+               or any(cls in str(block.get('id', '')).lower() for cls in exclude_classes):\
                 continue
 
             text = block.get_text(strip=True)
@@ -930,8 +943,16 @@ class WebTextExtractor:
             text_blocks.sort(key=lambda x: x[2], reverse=True)
             # 不要要素を除去してから返す
             best_block_content = text_blocks[0][0]
-            for tag in best_block_content.select('header, footer, nav, aside, script, style, .related, .recommend, .sidebar, .ad, .banner, noscript'):
-                tag.decompose()
+            unwanted_selectors = [
+                'header', 'footer', 'nav', 'aside', 'script', 'style', 'noscript',
+                '.related', '.recommend', '.sidebar', '.ad', '.banner', 
+                '.ranking', '.sports', '.entame', '.latest', '.news', '.links', 
+                '.more', '.topics', '.column', '.comment', '.social', '.share',
+                '.breadcrumb', '.pagination', '.tag', '.category'
+            ]
+            for selector in unwanted_selectors:
+                for tag in best_block_content.select(selector):
+                    tag.decompose()
             best_text = best_block_content.get_text(separator='\n', strip=True)
             if best_text:
                 return best_text
@@ -940,8 +961,16 @@ class WebTextExtractor:
         body = soup.body
         if body:
             # 不要要素を除去してからテキスト取得
-            for tag in body.select('header, footer, nav, script, style, aside, .header, .footer, .nav, .menu, .sidebar, .ad, .advertisement, .banner, noscript, .related, .recommend'):
-                tag.decompose()
+            unwanted_selectors = [
+                'header', 'footer', 'nav', 'script', 'style', 'aside', 'noscript',
+                '.header', '.footer', '.nav', '.menu', '.sidebar', '.ad', '.advertisement', '.banner',
+                '.related', '.recommend', '.ranking', '.sports', '.entame', '.latest', '.news', 
+                '.links', '.more', '.topics', '.column', '.comment', '.social', '.share',
+                '.breadcrumb', '.pagination', '.tag', '.category'
+            ]
+            for selector in unwanted_selectors:
+                for tag in body.select(selector):
+                    tag.decompose()
             body_text = body.get_text(separator='\n', strip=True)
             if body_text and len(body_text) > 50: # 短すぎるbodyは無視
                  return body_text # Bodyから取得できれば返す

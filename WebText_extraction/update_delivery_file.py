@@ -66,7 +66,7 @@ def main():
 
         # 3. 読み込んだテキストをキーワードと同じファイル名のテキストファイルに書き込む
         print(f"'{target_filepath}' にテキストを書き込んでいます...")
-        with open(target_filepath, 'w', encoding='utf-8') as f_target:
+        with open(target_filepath, 'w', encoding='utf-8-sig') as f_target:
             f_target.write(content_to_copy)
         print(f"'{target_filepath}' にテキストを書き込みました。")
         

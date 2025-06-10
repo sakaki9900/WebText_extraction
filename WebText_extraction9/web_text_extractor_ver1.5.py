@@ -860,9 +860,9 @@ class WebTextExtractor:
         """
         ドメインに応じてメインコンテンツを抽出する (失敗時は空文字列を返す)
         """
-        # 一般的なメインコンテンツのセレクタ
+        # 一般的なメインコンテンツのセレクタ（優先順位順）
         main_content_selectors = [
-            'article', 'main', '.article', '.post', '.entry', '.content', '#content',
+            'main', 'article', '.article', '.post', '.entry', '.content', '#content',
             '.main-content', '.post-content', '.article-content', '.entry-content',
             'section.article', 'div.article', '[itemprop="articleBody"]', '.story-body',
         ]
@@ -876,6 +876,7 @@ class WebTextExtractor:
             'gendai.media': ['.article-body'],
             'www.oricon.co.jp': ['.full-text'],
             'www.chunichi.co.jp': ['.article-body'],
+            'www.sanspo.com': ['.article-header, .article-body', '.article-body', '.article__text', 'article', 'main'],
             # 必要に応じて他のドメインを追加
         }
         
