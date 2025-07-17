@@ -1,6 +1,7 @@
 import subprocess
 import os
 import time
+import sys
 
 # 起動するstart.pyのパスのリスト
 # WebText_extraction_folder からの相対パスで指定
@@ -92,9 +93,9 @@ print("\nキーワードの割り当てが完了しました。スクリプト�
 for command_info in commands_to_run:
     try:
         # Pythonインタープリタでスクリプトを実行し、キーワードを引数として渡す
-        # (Windowsの場合、python がpython.exeを指すことを想定)
+        # sys.executableを使用して現在のPythonインタープリタを使用
         process = subprocess.Popen(
-            ['python', command_info['script'], command_info['keyword']],
+            [sys.executable, command_info['script'], command_info['keyword']],
             cwd=command_info['dir'],
             creationflags=subprocess.CREATE_NEW_CONSOLE
         )

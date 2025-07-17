@@ -24,7 +24,9 @@
       "Bash(do echo \"Processing WebText_extraction$i...\")",
       "Bash(for:*)",
       "Bash(do echo \"=== $dir ===\")",
-      "Bash(echo)"
+      "Bash(echo)",
+      "Bash(mkdir:*)",
+      "Bash(cp:*)"
     ],
     "deny": []
   }

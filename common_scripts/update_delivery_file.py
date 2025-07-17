@@ -22,9 +22,8 @@ def get_keyword_and_filepath():
     # update_delivery_file.py から見て1つ上の階層の delivery_folder を指定
     delivery_folder = os.path.join(script_dir, "..", "delivery_folder")
     
-    # このスクリプト (update_delivery_file.py) が WebText_extraction フォルダ直下にあると仮定
-    # Integrated_Text.txt へのパス
-    integrated_text_path = os.path.join(script_dir, "Integrated_Text", "Integrated_Text.txt")
+    # 現在の作業ディレクトリ（各WebText_extractionフォルダー）内のIntegrated_Text.txtへのパス
+    integrated_text_path = os.path.join(os.getcwd(), "Integrated_Text", "Integrated_Text.txt")
 
 
     if not os.path.isdir(delivery_folder):
