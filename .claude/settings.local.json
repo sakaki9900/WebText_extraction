@@ -2,7 +2,29 @@
   "permissions": {
     "allow": [
       "Bash(rm:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(python test_pinterest.py)",
+      "Bash(python3 test:*)",
+      "Bash(pip3 install:*)",
+      "Bash(pip install:*)",
+      "Bash(python3 -m pip install:*)",
+      "Bash(python3:*)",
+      "Bash(apt:*)",
+      "Bash(apt install:*)",
+      "Bash(sudo apt:*)",
+      "Bash(for i in {2..10})",
+      "Bash(do cp WebText_extraction/web_text_extractor_ver1.5.py WebText_extraction$i/)",
+      "Bash(done)",
+      "Bash(grep:*)",
+      "mcp__context7__resolve-library-id",
+      "mcp__context7__get-library-docs",
+      "Bash(python:*)",
+      "Bash(find:*)",
+      "Bash(for i in {4..10})",
+      "Bash(do echo \"Processing WebText_extraction$i...\")",
+      "Bash(for:*)",
+      "Bash(do echo \"=== $dir ===\")",
+      "Bash(echo)"
     ],
     "deny": []
   }

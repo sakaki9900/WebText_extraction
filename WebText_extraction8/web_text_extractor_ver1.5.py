@@ -78,7 +78,7 @@ class WebTextExtractor:
         print(f"Jina AI Readerを試行: {jina_url}")
         try:
             headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36'
             }
             response = requests.get(jina_url, headers=headers, timeout=60)
             response.raise_for_status()
@@ -124,7 +124,7 @@ class WebTextExtractor:
         print(f"PDF処理開始: {url}")
         try:
             headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36'
             }
             response = requests.get(url, headers=headers, timeout=60, stream=True) # stream=True for potentially large files
             response.raise_for_status()
@@ -201,7 +201,146 @@ class WebTextExtractor:
             elif ch.isprintable():
                 cleaned_chars.append(ch)
         text = ''.join(cleaned_chars)
+        
+        # 重複コンテンツの除去
+        text = self._remove_duplicate_content(text)
+        
         return text
+
+    def _is_pinterest_navigation_error(self, text):
+        """
+        抽出されたテキストがPinterestのナビゲーション要素のみかチェックする
+        
+        Parameters:
+        text (str): チェックするテキスト
+        
+        Returns:
+        bool: Pinterestナビゲーション要素のみの場合True、そうでなければFalse
+        """
+        if not text or len(text.strip()) == 0:
+            return False
+        
+        # 正常なコンテンツの兆候をチェック
+        content_indicators = [
+            # ドメイン名のパターン
+            r'\b[a-zA-Z0-9-]+\.(com|net|org|jp|co\.jp)\b',
+            # URLパターン
+            r'https?://[^\s]+',
+            # 記事タイトルっぽいパターン（日本語文字を含む長い文）
+            r'[あ-んア-ンア-ヶー一-龯]{10,}',
+            # 英語記事タイトルっぽいパターン
+            r'\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+){3,}',
+            # 目次や番号付きリスト
+            r'(?:目次|第\d+章|\d+\.\s)',
+            # 日付パターン
+            r'\d{4}[-/]\d{1,2}[-/]\d{1,2}',
+        ]
+        
+        import re
+        for pattern in content_indicators:
+            if re.search(pattern, text):
+                print(f"正常なコンテンツを検出: {pattern[:20]}...")
+                return False
+        
+        # Pinterestナビゲーション要素のキーフレーズ
+        nav_phrases = [
+            "Skip to content",
+            "Explore ideas", 
+            "Search for easy dinners",
+            "When autocomplete results are available",
+            "Log in",
+            "Sign up",
+            "コンテンツへスキップ",
+            "アイデアを探す",
+            "簡単ディナーレシピ"
+        ]
+        
+        # ナビゲーション要素の文字数を計算
+        nav_char_count = 0
+        total_nav_phrases = 0
+        
+        for phrase in nav_phrases:
+            if phrase in text:
+                nav_char_count += len(phrase)
+                total_nav_phrases += 1
+        
+        # テキスト全体の文字数
+        total_char_count = len(text.strip())
+        
+        # ナビゲーション要素が大部分を占めている場合のみエラーと判定
+        if total_nav_phrases >= 4 and total_char_count > 0:
+            nav_ratio = nav_char_count / total_char_count
+            if nav_ratio > 0.7:  # 70%以上がナビゲーション要素
+                print(f"Pinterestナビゲーション要素の割合が高い: {nav_ratio:.2f}")
+                return True
+        
+        # より厳密な完全一致パターンチェック
+        # ナビゲーション要素のみで構成される典型的なパターン
+        strict_nav_pattern = (
+            "Skip to content "
+            "Explore ideas "
+            "Search for easy dinners, fashion, etc. "
+            "When autocomplete results are available use up and down arrows to review and enter to select. Touch device users, explore by touch or with swipe gestures. "
+            "Log in "
+            "Sign up"
+        )
+        
+        normalized_text = ' '.join(text.split())
+        normalized_pattern = ' '.join(strict_nav_pattern.split())
+        
+        # 正規化されたテキストがナビゲーションパターンと非常に類似している場合
+        if len(normalized_text) < 300 and normalized_pattern in normalized_text:
+            return True
+        
+        return False
+
+    def _remove_duplicate_content(self, text):
+        """
+        テキストから重複部分を除去する
+        
+        Parameters:
+        text (str): 処理するテキスト
+        
+        Returns:
+        str: 重複が除去されたテキスト
+        """
+        if not text or len(text.strip()) < 100:
+            return text
+        
+        # テキストを段落ごとに分割
+        paragraphs = [p.strip() for p in text.split('\n\n') if p.strip()]
+        
+        if len(paragraphs) < 2:
+            return text
+        
+        # difflibを使って類似した段落を検出
+        from difflib import SequenceMatcher
+        
+        unique_paragraphs = []
+        seen_paragraphs = []
+        
+        for para in paragraphs:
+            is_duplicate = False
+            
+            # 既存の段落と比較
+            for seen_para in seen_paragraphs:
+                # 類似度を計算（0.8以上で重複と判定）
+                similarity = SequenceMatcher(None, para, seen_para).ratio()
+                if similarity > 0.8:
+                    print(f"重複段落を検出 (類似度: {similarity:.2f}): {para[:50]}...")
+                    is_duplicate = True
+                    break
+            
+            if not is_duplicate:
+                unique_paragraphs.append(para)
+                seen_paragraphs.append(para)
+        
+        # 重複が除去された場合のみログ出力
+        if len(unique_paragraphs) < len(paragraphs):
+            removed_count = len(paragraphs) - len(unique_paragraphs)
+            print(f"重複除去: {removed_count}個の重複段落を削除")
+        
+        return '\n\n'.join(unique_paragraphs)
 
     def extract_text_from_url(self, url):
         """
@@ -212,7 +351,7 @@ class WebTextExtractor:
         # --- 最初にコンテンツタイプを確認 --- 
         try:
             headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36'
             }
             # HEADリクエストでContent-Typeを取得 (タイムアウト設定)
             head_response = requests.head(url, headers=headers, timeout=10, allow_redirects=True)
@@ -310,7 +449,7 @@ class WebTextExtractor:
             soup = None # soupを初期化
             try:
                 headers = {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36'
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36'
                 }
                 response = requests.get(url, headers=headers, timeout=30)
                 response.raise_for_status()
@@ -439,6 +578,17 @@ class WebTextExtractor:
 
         # --- 最終結果の返却 ---
         if extracted_text and extracted_text.strip():
+            # Pinterestページの特別チェック
+            if 'pinterest.com' in url and self._is_pinterest_navigation_error(extracted_text):
+                print(f"Pinterestナビゲーション要素のみ検出、専用ハンドラーを実行: {url}")
+                pinterest_result = self.handle_pinterest_page(url)
+                if pinterest_result and "失敗しました" not in pinterest_result and pinterest_result.strip():
+                    print(f"Pinterest専用ハンドラーでの抽出成功: {url}")
+                    return self._cleanup_extracted_text(pinterest_result)
+                else:
+                    print(f"Pinterest専用ハンドラーも失敗、通常の抽出結果を返却: {url}")
+                    # 専用ハンドラーも失敗した場合は通常の抽出結果をそのまま返す
+            
             # テキストが抽出できた場合、クリーンアップして返す
             return self._cleanup_extracted_text(extracted_text.strip())
         else: # 本当に何も取れなかった場合
@@ -804,6 +954,236 @@ class WebTextExtractor:
             if driver:
                 driver.quit()
     
+    def handle_pinterest_page(self, url):
+        """Pinterestページの包括的なテキスト抽出"""
+        try:
+            driver = self.get_driver()
+            if not driver:
+                return f"ドライバーの初期化に失敗したため、{url} からテキストを抽出できませんでした。"
+                
+            driver.get(url)
+            
+            # Pinterestはロードに時間がかかることがあるので十分な待機時間を設定
+            time.sleep(5)
+            
+            # ピンのメインコンテナの読み込み完了を待機
+            try:
+                WebDriverWait(driver, 15).until(
+                    EC.any_of(
+                        EC.presence_of_element_located((By.CSS_SELECTOR, "[data-test-id='pin-close-up-content']")),
+                        EC.presence_of_element_located((By.CSS_SELECTOR, "[data-test-id='closeup-body']")),
+                        EC.presence_of_element_located((By.CSS_SELECTOR, "div[data-test-id='pin']")),
+                        EC.presence_of_element_located((By.CSS_SELECTOR, "article")),
+                        EC.presence_of_element_located((By.CSS_SELECTOR, "main"))
+                    )
+                )
+            except TimeoutException:
+                print(f"Pinterest: メインコンテンツの読み込みがタイムアウトしました: {url}")
+                # タイムアウトしても処理を続行
+            
+            # ページを少しスクロールしてコンテンツを完全に読み込む
+            driver.execute_script("window.scrollTo(0, 500);")
+            time.sleep(2)
+            driver.execute_script("window.scrollTo(0, 800);")
+            time.sleep(2)
+            driver.execute_script("window.scrollTo(0, 0);")
+            time.sleep(2)
+            
+            soup = BeautifulSoup(driver.page_source, 'html.parser')
+            
+            result = []
+            extracted_content = []
+            
+            # 1. ドメインリンクを抽出
+            domain_links = []
+            domain_selectors = [
+                "[data-test-id='pin-domain-link'] span",
+                "[data-test-id='pin-domain-link'] a",
+                "[data-test-id='pin-domain-link']",
+                "span[style*='text-decoration: underline']",
+                "a[href*='http']"
+            ]
+            
+            for selector in domain_selectors:
+                domain_elements = soup.select(selector)
+                for elem in domain_elements:
+                    domain_text = elem.get_text(strip=True)
+                    if domain_text and ('.' in domain_text or 'http' in domain_text):
+                        if domain_text not in domain_links and len(domain_text) < 100:
+                            domain_links.append(domain_text)
+            
+            # 2. タイトルを抽出（より包括的に）
+            pin_titles = []
+            title_selectors = [
+                "h1.FAo.dyH.Cc2.X8m.V2L.G1E",  # 具体的なクラス
+                "h1[data-test-id='pin-title']",
+                "h1[data-test-id='title']", 
+                "div[data-test-id='pin-description'] h1",
+                "div[data-test-id='closeup-title'] h1",
+                "h1",
+                ".FAo.dyH.Cc2.X8m.V2L.G1E"  # クラスベースの選択
+            ]
+            
+            for selector in title_selectors:
+                title_elements = soup.select(selector)
+                for elem in title_elements:
+                    title_text = elem.get_text(strip=True)
+                    if title_text and len(title_text) > 5 and title_text not in pin_titles:
+                        pin_titles.append(title_text)
+            
+            # 3. 説明文・概要を抽出
+            descriptions = []
+            description_selectors = [
+                "span.X8m.zDA.IZT.eSP.dyH.llN.ryr",  # 具体的なクラス
+                "div[data-test-id='pin-description'] span",
+                "div[data-test-id='closeup-description'] span",
+                "span[data-test-id='description-text']",
+                ".X8m.zDA.IZT.eSP.dyH.llN.ryr"
+            ]
+            
+            for selector in description_selectors:
+                desc_elements = soup.select(selector)
+                for elem in desc_elements:
+                    desc_text = elem.get_text(strip=True)
+                    if desc_text and len(desc_text) > 10 and desc_text not in descriptions:
+                        descriptions.append(desc_text)
+            
+            # 4. ピンナー情報を抽出
+            pinner_names = []
+            pinner_selectors = [
+                ".X8m.zDA.IZT.eSP.dyH.llN.Kv8",  # 具体的なクラス
+                "div[data-test-id='pinner-name']",
+                "a[data-test-id='pinner-name']",
+                "[data-test-id='pinner-avatar'] + div",
+                ".Kv8"  # ピンナー名っぽいクラス
+            ]
+            
+            for selector in pinner_selectors:
+                pinner_elements = soup.select(selector)
+                for elem in pinner_elements:
+                    pinner_text = elem.get_text(strip=True)
+                    if pinner_text and len(pinner_text) > 2 and len(pinner_text) < 50 and pinner_text not in pinner_names:
+                        pinner_names.append(pinner_text)
+            
+            # 5. コメント情報を抽出
+            comments_info = []
+            comment_selectors = [
+                "h2.FAo.dyH.c51.X8m.V2L.G1E",  # コメント数ヘッダー
+                "[data-test-id='comment-avatar-container'] + div",
+                "[data-test-id='author-and-comment-container']",
+                "[data-test-id='text-container']",
+                "div[class*='comment']"
+            ]
+            
+            for selector in comment_selectors:
+                comment_elements = soup.select(selector)
+                for elem in comment_elements:
+                    comment_text = elem.get_text(strip=True)
+                    if comment_text and len(comment_text) > 5 and comment_text not in comments_info:
+                        comments_info.append(comment_text)
+            
+            # 6. 包括的なメインコンテンツエリア抽出
+            main_content_areas = []
+            comprehensive_selectors = [
+                "div.KS5.hs0.un8.C9i.TB_",  # ユーザー指定のdiv
+                "[data-test-id='pin-close-up-content']",
+                "[data-test-id='closeup-body']",
+                "main",
+                "article"
+            ]
+            
+            for selector in comprehensive_selectors:
+                main_elements = soup.select(selector)
+                for elem in main_elements:
+                    # 子要素も含めて包括的にテキストを抽出
+                    all_text_elements = elem.find_all(text=True)
+                    filtered_texts = []
+                    for text in all_text_elements:
+                        clean_text = text.strip()
+                        if clean_text and len(clean_text) > 3:
+                            # scriptやstyleタグ内のテキストを除外
+                            if text.parent.name not in ['script', 'style', 'noscript']:
+                                filtered_texts.append(clean_text)
+                    
+                    if filtered_texts:
+                        area_content = '\n'.join(filtered_texts)
+                        if area_content not in main_content_areas and len(area_content) > 50:
+                            main_content_areas.append(area_content)
+            
+            # 7. 結果を構築（ラベルなし、純粋なテキストのみ）
+            # ドメインリンクを追加
+            if domain_links:
+                for domain in domain_links[:3]:  # 最大3つまで
+                    result.append(domain)
+            
+            # タイトルを追加
+            if pin_titles:
+                for title in pin_titles[:2]:  # 最大2つまで
+                    result.append(title)
+            
+            # 説明文を追加
+            if descriptions:
+                for desc in descriptions[:3]:  # 最大3つまで
+                    result.append(desc)
+            
+            # ピンナー情報を追加
+            if pinner_names:
+                for pinner in pinner_names[:2]:  # 最大2つまで
+                    result.append(pinner)
+            
+            # コメント情報を追加
+            if comments_info:
+                for comment in comments_info[:5]:  # 最大5つまで
+                    result.append(comment)
+            
+            # メインコンテンツエリアの内容を追加
+            if main_content_areas:
+                for content in main_content_areas[:2]:  # 最大2つまで
+                    result.append(content)
+            
+            # 8. フォールバック: 結果が不十分な場合はより広範囲に抽出
+            if len('\n'.join(result)) < 200:
+                print(f"Pinterest: 抽出結果が不十分のため、広範囲抽出を実行: {url}")
+                
+                # 不要な要素を除去
+                for unwanted in soup.select('script, style, nav, header, footer, .ad, .advertisement, noscript'):
+                    unwanted.decompose()
+                
+                # bodyの内容を段階的に抽出
+                body_element = soup.find('body')
+                if body_element:
+                    # 大きなdiv要素を探して内容を抽出
+                    large_divs = []
+                    for div in body_element.find_all('div'):
+                        div_text = div.get_text(separator=' ', strip=True)
+                        if len(div_text) > 100:
+                            large_divs.append((div, len(div_text)))
+                    
+                    # テキスト量でソート
+                    if large_divs:
+                        large_divs.sort(key=lambda x: x[1], reverse=True)
+                        # 上位2つのdivの内容を取得
+                        for div, _ in large_divs[:2]:
+                            div_content = div.get_text(separator='\n', strip=True)
+                            if div_content and div_content not in result:
+                                result.append(div_content[:1000])  # 最大1000文字
+            
+            # 最終結果の返却
+            if result:
+                final_result = '\n\n'.join(result)
+                print(f"Pinterest包括的抽出成功 (文字数: {len(final_result)}): {url}")
+                return final_result
+            else:
+                print(f"Pinterestから抽出できませんでした: {url}")
+                return f"Pinterestからコンテンツを抽出できませんでした: {url}"
+                
+        except Exception as e:
+            print(f"Pinterest処理エラー: {url} - {e}")
+            return f"Pinterestページからのテキスト抽出に失敗しました: {url} - エラー: {str(e)}"
+        finally:
+            if driver:
+                driver.quit()
+    
     def extract_with_selenium(self, url):
         """Seleniumを使用してページコンテンツを抽出する (失敗時はNoneを返す)"""
         driver = None
@@ -895,8 +1275,16 @@ class WebTextExtractor:
                 best_element = max(elements, key=lambda x: len(x.get_text(strip=True)), default=None)
                 if best_element:
                     # 不要な要素を削除
-                    for tag in best_element.select('header, footer, nav, aside, script, style, .related, .recommend, .sidebar, .ad, .banner, noscript'): # 不要要素を追加
-                        tag.decompose()
+                    unwanted_selectors = [
+                        'header', 'footer', 'nav', 'aside', 'script', 'style', 'noscript',
+                        '.related', '.recommend', '.sidebar', '.ad', '.banner', 
+                        '.ranking', '.sports', '.entame', '.latest', '.news', '.links', 
+                        '.more', '.topics', '.column', '.comment', '.social', '.share',
+                        '.breadcrumb', '.pagination', '.tag', '.category'
+                    ]
+                    for selector in unwanted_selectors:
+                        for tag in best_element.select(selector):
+                            tag.decompose()
                     main_text = best_element.get_text(separator='\n', strip=True)
                     if main_text: # 空でなければ返す
                         return main_text
@@ -910,8 +1298,12 @@ class WebTextExtractor:
 
         for block in blocks:
             # ヘッダー、フッター、広告などを除外
-            if any(cls in str(block.get('class', [])).lower() for cls in ['header', 'footer', 'nav', 'sidebar', 'ad', 'banner', 'menu', 'related', 'recommend'])\
-               or block.name in ['header', 'footer', 'nav', 'aside', 'script', 'style', 'noscript']:\
+            exclude_classes = ['header', 'footer', 'nav', 'sidebar', 'ad', 'banner', 'menu', 'related', 'recommend', 'ranking', 'sports', 'entame', 'latest', 'news', 'links', 'more', 'topics', 'column']
+            exclude_tags = ['header', 'footer', 'nav', 'aside', 'script', 'style', 'noscript']
+            
+            if any(cls in str(block.get('class', [])).lower() for cls in exclude_classes)\
+               or block.name in exclude_tags\
+               or any(cls in str(block.get('id', '')).lower() for cls in exclude_classes):\
                 continue
 
             text = block.get_text(strip=True)
@@ -931,8 +1323,16 @@ class WebTextExtractor:
             text_blocks.sort(key=lambda x: x[2], reverse=True)
             # 不要要素を除去してから返す
             best_block_content = text_blocks[0][0]
-            for tag in best_block_content.select('header, footer, nav, aside, script, style, .related, .recommend, .sidebar, .ad, .banner, noscript'):
-                tag.decompose()
+            unwanted_selectors = [
+                'header', 'footer', 'nav', 'aside', 'script', 'style', 'noscript',
+                '.related', '.recommend', '.sidebar', '.ad', '.banner', 
+                '.ranking', '.sports', '.entame', '.latest', '.news', '.links', 
+                '.more', '.topics', '.column', '.comment', '.social', '.share',
+                '.breadcrumb', '.pagination', '.tag', '.category'
+            ]
+            for selector in unwanted_selectors:
+                for tag in best_block_content.select(selector):
+                    tag.decompose()
             best_text = best_block_content.get_text(separator='\n', strip=True)
             if best_text:
                 return best_text
@@ -941,8 +1341,16 @@ class WebTextExtractor:
         body = soup.body
         if body:
             # 不要要素を除去してからテキスト取得
-            for tag in body.select('header, footer, nav, script, style, aside, .header, .footer, .nav, .menu, .sidebar, .ad, .advertisement, .banner, noscript, .related, .recommend'):
-                tag.decompose()
+            unwanted_selectors = [
+                'header', 'footer', 'nav', 'script', 'style', 'aside', 'noscript',
+                '.header', '.footer', '.nav', '.menu', '.sidebar', '.ad', '.advertisement', '.banner',
+                '.related', '.recommend', '.ranking', '.sports', '.entame', '.latest', '.news', 
+                '.links', '.more', '.topics', '.column', '.comment', '.social', '.share',
+                '.breadcrumb', '.pagination', '.tag', '.category'
+            ]
+            for selector in unwanted_selectors:
+                for tag in body.select(selector):
+                    tag.decompose()
             body_text = body.get_text(separator='\n', strip=True)
             if body_text and len(body_text) > 50: # 短すぎるbodyは無視
                  return body_text # Bodyから取得できれば返す
