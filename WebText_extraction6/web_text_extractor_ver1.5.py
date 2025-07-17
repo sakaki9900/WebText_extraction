@@ -977,9 +977,12 @@ class WebTextExtractor:
             for future in concurrent.futures.as_completed(future_to_url):
                 url = future_to_url[future]
                 try:
-                    text = future.result()
+                    text = future.result(timeout=600)  # 10分タイムアウト
                     results.append((url, text))
                     print(f"完了: {url}")
+                except concurrent.futures.TimeoutError:
+                    print(f"タイムアウト（20分）: {url}")
+                    results.append((url, "（テキスト抽出タイムアウト）"))
                 except Exception as e:
                     print(f"エラー: {url} - {e}")
                     results.append((url, f"エラーが発生しました: {e}"))
@@ -1048,13 +1051,17 @@ class WebTextExtractor:
                         print(f"情報: URLを除外します。理由: 完全一致エラーメッセージ「{template.replace('{}', url)}」。 URL: {url}")
                         break
                 
-                # URLを含まないパターンとの前方一致をチェック
+                # URLを含まないパターンとの前方一致をチェック（タイムアウトメッセージは除外しない）
                 if not is_failure:
                     for prefix in failure_patterns_prefix:
                         if text.startswith(prefix):
                             is_failure = True
                             print(f"情報: URLを除外します。理由: 前方一致エラーメッセージ「{prefix}...」。 URL: {url}")
                             break
+                
+                # タイムアウトメッセージは除外対象外
+                if text == "（テキスト抽出タイムアウト）":
+                    is_failure = False
 
             # 失敗したURLを除外
             if is_failure:
