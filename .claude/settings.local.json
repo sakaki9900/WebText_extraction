@@ -26,7 +26,8 @@
       "Bash(do echo \"=== $dir ===\")",
       "Bash(echo)",
       "Bash(mkdir:*)",
-      "Bash(cp:*)"
+      "Bash(cp:*)",
+      "Bash(del:*)"
     ],
     "deny": []
   }

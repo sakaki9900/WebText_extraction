@@ -2,6 +2,7 @@ import os
 import configparser
 import subprocess
 import sys
+import glob
 
 # Check if psutil is installed, if not use fallback mode
 try:
@@ -145,7 +146,9 @@ def run_script(script_name, *args):
     try:
         # stderr/stdout をパイプしないように変更 (stdout=None, stderr=None と同等)
         # text=True はそのままにし、check=True も通常は有用
-        process = subprocess.run(command, check=True, text=True, encoding='utf-8', errors='replace')
+        # 現在のワーキングディレクトリ（各WebText_extractionフォルダ）で実行
+        current_cwd = os.getcwd()
+        process = subprocess.run(command, check=True, text=True, encoding='utf-8', errors='replace', cwd=current_cwd)
         # 出力は直接表示されるため、ここでの print は不要になる
         print(f"\n--- {script_name} の実行が完了しました ---")
         return True
@@ -189,12 +192,7 @@ def run_extractor_script():
 
 def run_integrated_script():
     """integrated.pyを実行する"""
-    # integrated.py は存在しなくてもエラーで停止せず、次の処理に進むようにする
-    script_name = 'integrated.py'
-    if not os.path.exists(script_name):
-        print(f"警告: スクリプト {script_name} が見つかりません。このステップをスキップします。")
-        return True # スキップしても成功扱いとする
-    return run_script(script_name)
+    return run_script('integrated.py')
 
 def run_update_delivery_script(keyword):
     """update_delivery_file.py をキーワード引数付きで実行する"""
@@ -202,6 +200,41 @@ def run_update_delivery_script(keyword):
         print("エラー: update_delivery_file.py の実行に必要なキーワードがありません。", file=sys.stderr)
         return False
     return run_script('update_delivery_file.py', keyword)
+
+def cleanup_previous_files():
+    """前回の処理で残った出力ファイルをクリーンアップする"""
+    cleanup_folders = ['outputs', 'urls', 'Integrated_Text']
+    total_deleted = 0
+    
+    print("前回の処理ファイルのクリーンアップを開始します...")
+    
+    for folder in cleanup_folders:
+        if not os.path.exists(folder):
+            print(f"  フォルダー '{folder}' が存在しないため、スキップします。")
+            continue
+            
+        # フォルダー内の.txtファイルを検索
+        txt_files = glob.glob(os.path.join(folder, "*.txt"))
+        
+        if not txt_files:
+            print(f"  フォルダー '{folder}' 内に.txtファイルが見つかりません。")
+            continue
+            
+        # ファイルを削除
+        deleted_count = 0
+        for file_path in txt_files:
+            try:
+                os.remove(file_path)
+                print(f"    削除: {file_path}")
+                deleted_count += 1
+            except OSError as e:
+                print(f"    警告: ファイル '{file_path}' の削除に失敗しました: {e}", file=sys.stderr)
+        
+        total_deleted += deleted_count
+        print(f"  フォルダー '{folder}' から {deleted_count} 個のファイルを削除しました。")
+    
+    print(f"クリーンアップ完了: 合計 {total_deleted} 個のファイルを削除しました。")
+    return True
 
 def run_script_with_cpu_limit(script_name, cpu_percent_ratio):
     """
@@ -246,7 +279,9 @@ def run_script_with_cpu_limit(script_name, cpu_percent_ratio):
     process = None
     try:
         # Start the process
-        process = subprocess.Popen([sys.executable, script_path])
+        # 現在のワーキングディレクトリ（各WebText_extractionフォルダ）で実行
+        current_cwd = os.getcwd()
+        process = subprocess.Popen([sys.executable, script_path], cwd=current_cwd)
         
         # Get process handle and set affinity
         try:
@@ -283,6 +318,8 @@ def main():
     # 2. キーワードからURLを取得
     google_url, yahoo_url, keyword = get_urls_from_keyword_in_delivery_folder()
 
+    # 2.5. 前回の処理ファイルをクリーンアップ
+    cleanup_previous_files()
 
     # 3. config.ini を作成/更新
     create_config_ini(cpu_ratio, google_url, yahoo_url)

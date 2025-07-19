@@ -3,19 +3,18 @@ import os
 import time
 import sys
 
-# 起動するstart.pyのパスのリスト
-# WebText_extraction_folder からの相対パスで指定
-start_scripts = [
-    os.path.join("WebText_extraction", "start.py"),
-    os.path.join("WebText_extraction2", "start.py"),
-    os.path.join("WebText_extraction3", "start.py"),
-    os.path.join("WebText_extraction4", "start.py"),
-    os.path.join("WebText_extraction5", "start.py"),
-    os.path.join("WebText_extraction6", "start.py"),
-    os.path.join("WebText_extraction7", "start.py"),
-    os.path.join("WebText_extraction8", "start.py"),
-    os.path.join("WebText_extraction9", "start.py"),
-    os.path.join("WebText_extraction10", "start.py"),
+# 処理対象のWebText_extractionフォルダーのリスト
+work_directories = [
+    "WebText_extraction",
+    "WebText_extraction2",
+    "WebText_extraction3",
+    "WebText_extraction4",
+    "WebText_extraction5",
+    "WebText_extraction6",
+    "WebText_extraction7",
+    "WebText_extraction8",
+    "WebText_extraction9",
+    "WebText_extraction10",
 ]
 
 # スクリプト自身のディレクトリを取得
@@ -43,69 +42,75 @@ if len(txt_files_all) == 0:
     print(f"エラー: delivery_folder 内にテキストファイルが見つかりませんでした。")
     print("少なくとも1個のテキストファイルが必要です。処理を中断します。")
     exit()
-elif len(txt_files_all) > len(start_scripts):
+elif len(txt_files_all) > len(work_directories):
     print(f"情報: delivery_folder 内に {len(txt_files_all)} 個のテキストファイルが見つかりました。")
-    print(f"最初の {len(start_scripts)} 個のファイルのみをキーワードとして使用します。")
-    txt_files = txt_files_all[:len(start_scripts)] # start_scriptsの数だけ取得
+    print(f"最初の {len(work_directories)} 個のファイルのみをキーワードとして使用します。")
+    txt_files = txt_files_all[:len(work_directories)] # work_directoriesの数だけ取得
 else:
-    # txtファイルがstart_scriptsの数以下の場合
+    # txtファイルがwork_directoriesの数以下の場合
     print(f"情報: delivery_folder 内に {len(txt_files_all)} 個のテキストファイルが見つかりました。")
-    print(f"利用可能な {len(txt_files_all)} 個のstart.pyを実行します。")
+    print(f"利用可能な {len(txt_files_all)} 個のフォルダーで処理を実行します。")
     txt_files = txt_files_all # 全てのtxtファイルを使用
 
 # キーワードリストを作成 (ファイル名から拡張子を除いたもの)
 keywords = [os.path.splitext(f)[0] for f in txt_files]
 
-# start_scriptsをキーワードの数に合わせて調整
-if len(keywords) < len(start_scripts):
-    # キーワードの数がstart_scriptsの数より少ない場合、start_scriptsを切り詰める
-    start_scripts = start_scripts[:len(keywords)]
-    print(f"start_scriptsを {len(keywords)} 個に調整しました。")
-elif len(keywords) > len(start_scripts):
+# work_directoriesをキーワードの数に合わせて調整
+if len(keywords) < len(work_directories):
+    # キーワードの数がwork_directoriesの数より少ない場合、work_directoriesを切り詰める
+    work_directories = work_directories[:len(keywords)]
+    print(f"work_directoriesを {len(keywords)} 個に調整しました。")
+elif len(keywords) > len(work_directories):
     # この場合は上のロジックで既にtxt_filesが調整されているはずなので、基本的には発生しない
-    print(f"警告: 予期しない状況です。キーワード数({len(keywords)})がstart_scripts数({len(start_scripts)})より多くなっています。")
-    keywords = keywords[:len(start_scripts)]
+    print(f"警告: 予期しない状況です。キーワード数({len(keywords)})がwork_directories数({len(work_directories)})より多くなっています。")
+    keywords = keywords[:len(work_directories)]
 
 processes = []
 commands_to_run = [] # 起動するコマンドと引数、作業ディレクトリを保存するリスト
 
-print("delivery_folder からキーワードを自動取得し、スクリプトに割り当てます...")
+print("delivery_folder からキーワードを自動取得し、フォルダーに割り当てます...")
 
-for i, script_path_str in enumerate(start_scripts):
-    # start_scriptsのパスが絶対パスでない場合、スクリプトのディレクトリからの相対パスとして解決
-    absolute_script_path = os.path.join(script_directory, script_path_str)
+# 共通のstart.pyのパス
+common_start_script = os.path.join(script_directory, "common_scripts", "start.py")
 
-    if not os.path.exists(absolute_script_path):
-        print(f"エラー: {absolute_script_path} が見つかりません。スキップします。")
+if not os.path.exists(common_start_script):
+    print(f"エラー: 共通のstart.pyが見つかりません: {common_start_script}")
+    exit()
+
+for i, work_dir_name in enumerate(work_directories):
+    # 作業ディレクトリの絶対パス
+    work_dir_abs_path = os.path.join(script_directory, work_dir_name)
+    
+    if not os.path.exists(work_dir_abs_path):
+        print(f"エラー: {work_dir_abs_path} が見つかりません。スキップします。")
         continue
 
-    # WebText_extractionX フォルダをCWDとするため、その親フォルダからの相対パスを再構築
-    script_dir_name = os.path.dirname(script_path_str) # "WebText_extractionX"
-    script_dir_abs_path = os.path.join(script_directory, script_dir_name) # 絶対パス
-    script_filename = os.path.basename(script_path_str) # "start.py"
-
     keyword = keywords[i]
-    commands_to_run.append({'dir': script_dir_abs_path, 'script': script_filename, 'keyword': keyword, 'full_path': absolute_script_path})
-    print(f"'{script_dir_name}' の '{script_filename}' にキーワード '{keyword}' を割り当てました。")
+    commands_to_run.append({
+        'dir': work_dir_abs_path, 
+        'script_path': common_start_script, 
+        'keyword': keyword, 
+        'work_dir_name': work_dir_name
+    })
+    print(f"'{work_dir_name}' フォルダーにキーワード '{keyword}' を割り当てました。")
 
 print("\nキーワードの割り当てが完了しました。スクリプトを起動します...")
 
 for command_info in commands_to_run:
     try:
-        # Pythonインタープリタでスクリプトを実行し、キーワードを引数として渡す
-        # sys.executableを使用して現在のPythonインタープリタを使用
+        # 共通のstart.pyを各WebText_extractionフォルダーをワーキングディレクトリとして実行
         process = subprocess.Popen(
-            [sys.executable, command_info['script'], command_info['keyword']],
+            [sys.executable, command_info['script_path'], command_info['keyword']],
             cwd=command_info['dir'],
             creationflags=subprocess.CREATE_NEW_CONSOLE
         )
         processes.append(process)
-        print(f"{command_info['full_path']} をキーワード '{command_info['keyword']}' で起動しました。")
+        print(f"{command_info['work_dir_name']} フォルダーで共通start.pyをキーワード '{command_info['keyword']}' で起動しました。")
         time.sleep(5)  # 5秒待機
     except FileNotFoundError:
-        print(f"エラー: Pythonインタープリタが見つからないか、{command_info['full_path']} (作業ディレクトリ: {command_info['dir']}) の実行に失敗しました。")
+        print(f"エラー: Pythonインタープリタが見つからないか、{command_info['script_path']} (作業ディレクトリ: {command_info['dir']}) の実行に失敗しました。")
     except Exception as e:
-        print(f"エラー: {command_info['full_path']} の起動中に問題が発生しました: {e}")
+        print(f"エラー: {command_info['work_dir_name']} での起動中に問題が発生しました: {e}")
 
 
 print("\nすべてのスクリプトの起動を試みました。")
