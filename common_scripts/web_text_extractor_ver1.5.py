@@ -1405,6 +1405,155 @@ class WebTextExtractor:
         
         return sorted_results
     
+    def detect_browser_errors(self, text, url):
+        """
+        ブラウザエラーメッセージを検出する
+        
+        Parameters:
+        text (str): 検出対象のテキスト
+        url (str): 対応するURL
+        
+        Returns:
+        bool: エラーメッセージが検出された場合True
+        """
+        if not text:
+            return False
+        
+        # config.iniからエラーパターンを読み込む
+        config = configparser.ConfigParser()
+        config_path = 'config.ini'
+        
+        try:
+            if os.path.exists(config_path):
+                config.read(config_path, encoding='utf-8')
+                
+                # ERROR_PATTERNSセクションが存在し、機能が有効かチェック
+                if 'ERROR_PATTERNS' in config:
+                    if not config.getboolean('ERROR_PATTERNS', 'enabled', fallback=True):
+                        return False  # 機能が無効の場合は検出しない
+                    
+                    # ブラウザエラーパターンを取得
+                    browser_errors = config.get('ERROR_PATTERNS', 'browser_errors', fallback='')
+                    custom_patterns = config.get('ERROR_PATTERNS', 'custom_patterns', fallback='')
+                    
+                    # カンマ区切りで分割してパターンリストを作成
+                    error_patterns = []
+                    if browser_errors:
+                        error_patterns.extend([pattern.strip() for pattern in browser_errors.split(',') if pattern.strip()])
+                    if custom_patterns:
+                        error_patterns.extend([pattern.strip() for pattern in custom_patterns.split(',') if pattern.strip()])
+                    
+                    # テキストに対してパターンマッチング
+                    for pattern in error_patterns:
+                        if pattern in text:
+                            print(f"エラーパターン検出: '{pattern}' in URL: {url}")
+                            return True
+                            
+        except (configparser.Error, ValueError) as e:
+            print(f"config.ini読み込みエラー: {e}")
+        
+        return False
+    
+    def backup_url_file(self, url_file):
+        """
+        URLファイルのバックアップを作成する
+        
+        Parameters:
+        url_file (str): バックアップ対象のファイルパス
+        
+        Returns:
+        str: バックアップファイルのパス
+        """
+        import shutil
+        from datetime import datetime
+        
+        if not os.path.exists(url_file):
+            print(f"警告: バックアップ対象ファイルが存在しません: {url_file}")
+            return None
+        
+        # config.iniでバックアップが有効かチェック
+        config = configparser.ConfigParser()
+        config_path = 'config.ini'
+        
+        try:
+            if os.path.exists(config_path):
+                config.read(config_path, encoding='utf-8')
+                if 'ERROR_PATTERNS' in config:
+                    if not config.getboolean('ERROR_PATTERNS', 'backup_enabled', fallback=True):
+                        print(f"情報: バックアップが無効化されています: {url_file}")
+                        return None
+        except (configparser.Error, ValueError) as e:
+            print(f"config.ini読み込みエラー: {e}")
+        
+        # バックアップファイル名を生成（タイムスタンプ付き）
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        backup_file = f"{url_file}.backup_{timestamp}"
+        
+        try:
+            shutil.copy2(url_file, backup_file)
+            print(f"バックアップ作成: {url_file} -> {backup_file}")
+            return backup_file
+        except Exception as e:
+            print(f"バックアップ作成エラー: {e}")
+            return None
+    
+    def remove_url_from_list(self, url, url_file):
+        """
+        URLリストから指定URLを除外する
+        
+        Parameters:
+        url (str): 除外するURL
+        url_file (str): URLリストファイルのパス
+        
+        Returns:
+        bool: 成功した場合True
+        """
+        if not os.path.exists(url_file):
+            print(f"警告: URLリストファイルが存在しません: {url_file}")
+            return False
+        
+        try:
+            # バックアップを作成
+            backup_file = self.backup_url_file(url_file)
+            if backup_file is None and os.path.exists('config.ini'):
+                # バックアップが無効でない限り、失敗はエラー
+                config = configparser.ConfigParser()
+                config.read('config.ini', encoding='utf-8')
+                if 'ERROR_PATTERNS' in config and config.getboolean('ERROR_PATTERNS', 'backup_enabled', fallback=True):
+                    print(f"エラー: バックアップ作成に失敗したため、URL除外を中止します: {url_file}")
+                    return False
+            
+            # ファイルを読み込み、指定URLを除外
+            with open(url_file, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+            
+            # 指定URLを除外してフィルタリング
+            filtered_lines = []
+            url_removed = False
+            
+            for line in lines:
+                line_url = line.strip()
+                if line_url != url:
+                    filtered_lines.append(line)
+                else:
+                    url_removed = True
+                    print(f"URLを除外: {url} from {url_file}")
+            
+            if not url_removed:
+                print(f"情報: 除外対象URLが見つかりませんでした: {url} in {url_file}")
+                return False
+            
+            # ファイルを更新
+            with open(url_file, 'w', encoding='utf-8') as f:
+                f.writelines(filtered_lines)
+            
+            print(f"URLリスト更新完了: {url_file}")
+            return True
+            
+        except Exception as e:
+            print(f"URL除外エラー: {e}")
+            return False
+    
     def save_results(self, results, output_file="extracted_texts.txt", source_url_file=None):
         """
         抽出結果をファイルに保存する。ファイルの先頭にはヘッダーと元のURLリストを追加する。
@@ -1420,6 +1569,7 @@ class WebTextExtractor:
         # テキスト抽出に失敗したURLを除外
         filtered_results = []
         excluded_urls = []
+        error_detected_urls = []  # エラーパターンで検出されたURL
         
         for url, text in results:
             is_failure = False # 失敗フラグを初期化
@@ -1429,47 +1579,55 @@ class WebTextExtractor:
                 is_failure = True
                 print(f"情報: URLを除外します。理由: 抽出結果がNoneです。 URL: {url}")
             else:
-                # 完全一致でチェックする定型エラーメッセージのテンプレート
-                # URLを含むもの
-                failure_templates_with_url = [
-                    "PDFからテキストを抽出できませんでした: {}",
-                    "PDFファイルのダウンロードに失敗しました: {}",
-                    "PDFファイルの処理中にエラーが発生しました: {}",
-                    "すべての抽出方法でテキストを抽出できませんでした: {}",
-                    "特定ドメインの抽出に失敗しました (Jina & Selenium): {}",
-                    "Yahoo画像検索の抽出に失敗しました (Jina & Selenium): {}",
-                    "ドライバーの初期化に失敗したため、{} からテキストを抽出できませんでした。",
-                    "X (Twitter) ページからのテキスト抽出に失敗しました: {}",
-                    "Instagramポストからテキストが見つかりませんでした: {}",
-                    "Instagramページからのテキスト抽出に失敗しました: {}",
-                    "Yahoo知恵袋ページからのテキスト抽出に失敗しました: {}",
-                    "知恵袋からコンテンツを抽出できませんでした: {}",
-                    "YouTubeページからのテキスト抽出に失敗しました: {}",
-                ]
-                # URLを含まないもの、または可変部分を含むもの
-                failure_patterns_prefix = [
-                    "エラーが発生しました:", # concurrent.futures からのエラーメッセージ
-                ]
-
-                # URLを含むテンプレートとの完全一致をチェック
-                for template in failure_templates_with_url:
-                    expected_error_message = template.format(url)
-                    if text == expected_error_message:
-                        is_failure = True
-                        print(f"情報: URLを除外します。理由: 完全一致エラーメッセージ「{template.replace('{}', url)}」。 URL: {url}")
-                        break
+                # 新しいエラーパターン検出機能を使用
+                if self.detect_browser_errors(text, url):
+                    is_failure = True
+                    error_detected_urls.append(url)
+                    print(f"情報: URLを除外します。理由: ブラウザエラーパターンが検出されました。 URL: {url}")
                 
-                # URLを含まないパターンとの前方一致をチェック（タイムアウトメッセージは除外しない）
+                # 既存のエラーメッセージ検出ロジックも継続（後方互換性のため）
                 if not is_failure:
-                    for prefix in failure_patterns_prefix:
-                        if text.startswith(prefix):
+                    # 完全一致でチェックする定型エラーメッセージのテンプレート
+                    # URLを含むもの
+                    failure_templates_with_url = [
+                        "PDFからテキストを抽出できませんでした: {}",
+                        "PDFファイルのダウンロードに失敗しました: {}",
+                        "PDFファイルの処理中にエラーが発生しました: {}",
+                        "すべての抽出方法でテキストを抽出できませんでした: {}",
+                        "特定ドメインの抽出に失敗しました (Jina & Selenium): {}",
+                        "Yahoo画像検索の抽出に失敗しました (Jina & Selenium): {}",
+                        "ドライバーの初期化に失敗したため、{} からテキストを抽出できませんでした。",
+                        "X (Twitter) ページからのテキスト抽出に失敗しました: {}",
+                        "Instagramポストからテキストが見つかりませんでした: {}",
+                        "Instagramページからのテキスト抽出に失敗しました: {}",
+                        "Yahoo知恵袋ページからのテキスト抽出に失敗しました: {}",
+                        "知恵袋からコンテンツを抽出できませんでした: {}",
+                        "YouTubeページからのテキスト抽出に失敗しました: {}",
+                    ]
+                    # URLを含まないもの、または可変部分を含むもの
+                    failure_patterns_prefix = [
+                        "エラーが発生しました:", # concurrent.futures からのエラーメッセージ
+                    ]
+
+                    # URLを含むテンプレートとの完全一致をチェック
+                    for template in failure_templates_with_url:
+                        expected_error_message = template.format(url)
+                        if text == expected_error_message:
                             is_failure = True
-                            print(f"情報: URLを除外します。理由: 前方一致エラーメッセージ「{prefix}...」。 URL: {url}")
+                            print(f"情報: URLを除外します。理由: 完全一致エラーメッセージ「{template.replace('{}', url)}」。 URL: {url}")
                             break
-                
-                # タイムアウトメッセージは除外対象外
-                if text == "（テキスト抽出タイムアウト）":
-                    is_failure = False
+                    
+                    # URLを含まないパターンとの前方一致をチェック（タイムアウトメッセージは除外しない）
+                    if not is_failure:
+                        for prefix in failure_patterns_prefix:
+                            if text.startswith(prefix):
+                                is_failure = True
+                                print(f"情報: URLを除外します。理由: 前方一致エラーメッセージ「{prefix}...」。 URL: {url}")
+                                break
+                    
+                    # タイムアウトメッセージは除外対象外
+                    if text == "（テキスト抽出タイムアウト）":
+                        is_failure = False
 
             # 失敗したURLを除外
             if is_failure:
@@ -1480,6 +1638,19 @@ class WebTextExtractor:
         # 除外したURLの数をログに出力
         if excluded_urls:
             print(f"テキスト抽出に失敗した {len(excluded_urls)} 件のURLを出力から除外しました")
+            
+            # エラーパターンで検出されたURLをURLリストからも除外
+            if error_detected_urls and source_url_file:
+                print(f"エラーパターンで検出された {len(error_detected_urls)} 件のURLをURLリストからも除外します")
+                for error_url in error_detected_urls:
+                    try:
+                        success = self.remove_url_from_list(error_url, source_url_file)
+                        if success:
+                            print(f"URLリストから除外完了: {error_url}")
+                        else:
+                            print(f"URLリストから除外失敗: {error_url}")
+                    except Exception as e:
+                        print(f"URLリスト除外エラー: {error_url} - {e}")
             
         # 実際に保存するのはフィルタリング後の結果
         results = filtered_results
