@@ -27,7 +27,14 @@
       "Bash(echo)",
       "Bash(mkdir:*)",
       "Bash(cp:*)",
-      "Bash(del:*)"
+      "Bash(del:*)",
+      "mcp__playwright__browser_navigate",
+      "mcp__filesystem__list_directory_with_sizes",
+      "mcp__filesystem__directory_tree",
+      "Bash(powershell:*)",
+      "mcp__filesystem__get_file_info",
+      "mcp__filesystem__read_file",
+      "mcp__filesystem__list_directory"
     ],
     "deny": []
   }
