@@ -34,7 +34,14 @@
       "Bash(powershell:*)",
       "mcp__filesystem__get_file_info",
       "mcp__filesystem__read_file",
-      "mcp__filesystem__list_directory"
+      "mcp__filesystem__list_directory",
+      "Bash(do)",
+      "Bash(if [ ! -f \"$folder/$subdir/.gitkeep\" ])",
+      "Bash([ -d \"$folder/$subdir\" ])",
+      "Bash(then)",
+      "Bash(touch:*)",
+      "Bash(echo \"Created .gitkeep in $folder/$subdir\")",
+      "Bash(fi)"
     ],
     "deny": []
   }
